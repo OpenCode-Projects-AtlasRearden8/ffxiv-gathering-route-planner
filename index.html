@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFXIV Gathering Route Planner</title>
+<meta name="description" content="Plan FFXIV gatherer routes by Eorzea time: pick a slot, see which timed nodes are up, order stops, save favorite routes, and count down to the next window.">
+<style>
+  :root {
+    --bg: #16151c;
+    --bg-soft: #1e1d26;
+    --card: #24232e;
+    --card-edge: #34323f;
+    --ink: #ede9e0;
+    --ink-dim: #a49fae;
+    --accent: #e8a33d;
+    --accent-ink: #2a1f0d;
+    --btn: #333040;
+    --btn-hover: #413d51;
+    --ok: #6fbf8b;
+    --ok-ink: #10261a;
+    --danger: #d96a6a;
+    --radius: 10px;
+    font-size: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.45;
+  }
+  header {
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid var(--card-edge);
+  }
+  .head-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px 18px;
+  }
+  h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+  h1 .sub { color: var(--ink-dim); font-weight: normal; font-size: 0.85rem; }
+  .clock {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+  }
+  .clock .bells { color: var(--accent); font-weight: 700; }
+  .clock .earth { color: var(--ink-dim); font-size: 0.8rem; margin-left: 10px; }
+  .badge {
+    font-size: 0.72rem;
+    color: var(--ink-dim);
+    border: 1px solid var(--card-edge);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 16px 20px 48px;
+  }
+  .slot-panel { margin: 14px 0 22px; }
+  .panel-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    margin: 0 0 8px;
+  }
+  .slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    gap: 6px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .slot-btn {
+    background: var(--btn);
+    border: 1px solid var(--card-edge);
+    border-radius: var(--radius);
+    padding: 7px 4px 5px;
+    text-align: center;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .slot-btn:hover { background: var(--btn-hover); }
+  .slot-btn .hh { display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slot-btn .ct { display: block; font-size: 0.68rem; color: var(--ink-dim); }
+  .slot-btn.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  .slot-btn.active .ct { color: #6b5426; }
+  .slot-btn.now::after {
+    content: "now";
+    position: relative;
+    display: block;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .slot-btn.active.now::after { color: var(--accent-ink); }
+  .tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    align-items: center;
+  }
+  .tool-btn {
+    background: var(--btn);
+    border: 1px solid var(--card-edge);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+  }
+  .tool-btn:hover { background: var(--btn-hover); }
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .cols { grid-template-columns: minmax(0, 1fr); }
+  }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .node-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--card-edge);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--bg-soft);
+  }
+  .node-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .node-name { font-weight: 650; }
+  .pill {
+    font-size: 0.68rem;
+    border-radius: 999px;
+    padding: 2px 9px;
+    border: 1px solid var(--card-edge);
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .pill.job { color: var(--accent); border-color: #5a4a25; }
+  .pill.open-now {
+    color: var(--ok-ink);
+    background: var(--ok);
+    border-color: var(--ok);
+    font-weight: 700;
+  }
+  .node-meta { font-size: 0.84rem; color: var(--ink-dim); }
+  .node-note { font-size: 0.8rem; color: var(--ink-dim); font-style: italic; }
+  .node-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .add-btn {
+    background: var(--btn);
+    border: 1px solid var(--card-edge);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+  }
+  .add-btn:hover { background: var(--btn-hover); }
+  .add-btn.in-route {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  .empty {
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    padding: 8px 2px;
+  }
+  .route-item {
+    display: grid;
+    grid-template-columns: auto minmax(0,1fr) auto;
+    gap: 6px 10px;
+    align-items: center;
+    border-top: 1px dashed var(--card-edge);
+    padding: 8px 2px;
+  }
+  .route-item:first-of-type { border-top: none; }
+  .route-num {
+    color: var(--accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .route-name { font-weight: 600; font-size: 0.88rem; overflow-wrap: anywhere; }
+  .route-travel { grid-column: 2; font-size: 0.76rem; color: var(--ink-dim); }
+  .route-cd { grid-column: 2; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  .route-cd.live { color: var(--ok); }
+  .icon-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+  }
+  .icon-btn:hover { border-color: var(--card-edge); color: var(--ink); }
+  .icon-btn:disabled { opacity: 0.3; cursor: default; }
+  .fav-form { display: flex; gap: 8px; margin: 8px 0 10px; }
+  .fav-form input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-soft);
+    border: 1px solid var(--card-edge);
+    border-radius: 8px;
+    color: var(--ink);
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 0.85rem;
+  }
+  .fav-form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .fav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 2px;
+    border-top: 1px dashed var(--card-edge);
+    font-size: 0.85rem;
+  }
+  .fav-item .load-btn {
+    background: none; border: none; color: var(--accent);
+    padding: 0; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .fav-item .meta { color: var(--ink-dim); font-size: 0.74rem; }
+  .next-summary {
+    font-size: 0.88rem;
+    margin-bottom: 8px;
+  }
+  .next-summary strong { font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); }
+  footer {
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 0.75rem;
+    padding: 14px 20px 28px;
+    border-top: 1px solid var(--card-edge);
+  }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="head-row">
+    <h1>FFXIV Gathering Route Planner <span class="sub">timed nodes, tidy routes</span></h1>
+    <div class="clock" id="clock" aria-live="off"><span class="bells" id="et-clock">--:--:--</span> ET<span class="earth" id="earth-clock"></span></div>
+  </div>
+  <div class="head-row" style="margin-top:6px">
+    <span class="badge" id="data-source-badge">Data: loading…</span>
+    <span class="badge">All times are Eorzea Time (ET)</span>
+  </div>
+</header>
+
+<main>
+  <section class="slot-panel" aria-labelledby="slot-label">
+    <p class="panel-label" id="slot-label">1. Pick an Eorzea time slot</p>
+    <div class="slot-grid" id="slot-grid" role="group" aria-label="Eorzea hour slots"></div>
+    <div class="tools">
+      <button class="tool-btn" id="now-btn" type="button">Use current ET hour</button>
+      <button class="tool-btn" id="clear-route-btn" type="button">Clear route</button>
+      <button class="tool-btn" id="copy-route-btn" type="button">Copy route as text</button>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section aria-labelledby="nodes-heading">
+      <h2 id="nodes-heading">2. Stops up in slot <span id="slot-heading-hour">–</span> ET</h2>
+      <div id="node-list"></div>
+    </section>
+
+    <aside>
+      <section class="card">
+        <h2>Your route</h2>
+        <div id="route-list"></div>
+        <div class="next-summary" id="next-summary"></div>
+      </section>
+
+      <section class="card">
+        <h2>Favorite routes</h2>
+        <div class="fav-form">
+          <input id="fav-name" type="text" placeholder="Name this route…" aria-label="Favorite route name" maxlength="60">
+          <button class="tool-btn" id="save-fav-btn" type="button">Save</button>
+        </div>
+        <div id="fav-list"></div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<footer>
+  Countdown math uses the standard Eorzea conversion: one ET bell = 175 real seconds.<br>
+  A beginner-friendly tool from <strong>Asdale Dynamics, LLC</strong> · MIT licensed · runs fully offline.
+</footer>
+
+<script type="application/json" id="default-nodes">
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "rarefied-sharlayan-rock-salt",
+      "item": "Rarefied Sharlayan Rock Salt",
+      "job": "MIN",
+      "type": "unspoiled",
+      "expansion": "Endwalker",
+      "starts": [0, 12],
+      "duration": 2,
+      "zone": "Labyrinthos",
+      "coords": "32, 21",
+      "aetheryte": "Sharlayan Hamlet",
+      "note": ""
+    },
+    {
+      "id": "rarefied-bismuth-ore",
+      "item": "Rarefied Bismuth Ore",
+      "job": "MIN",
+      "type": "unspoiled",
+      "expansion": "Endwalker",
+      "starts": [6, 18],
+      "duration": 2,
+      "zone": "Mare Lamentorum",
+      "coords": "16, 32",
+      "aetheryte": "Sinus Lacrimae",
+      "note": ""
+    },
+    {
+      "id": "rarefied-pewter-ore",
+      "item": "Rarefied Pewter Ore",
+      "job": "MIN",
+      "type": "unspoiled",
+      "expansion": "Endwalker",
+      "starts": [4, 16],
+      "duration": 2,
+      "zone": "Thavnair",
+      "coords": "32, 25",
+      "aetheryte": "Waterside",
+      "note": ""
+    },
+    {
+      "id": "rarefied-red-pine-log",
+      "item": "Rarefied Red Pine Log",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "Endwalker",
+      "starts": [4, 16],
+      "duration": 2,
+      "zone": "Garlemald",
+      "coords": "35, 6",
+      "aetheryte": "Tertium",
+      "note": ""
+    },
+    {
+      "id": "rarefied-dark-rye",
+      "item": "Rarefied Dark Rye",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "Endwalker",
+      "starts": [6, 18],
+      "duration": 2,
+      "zone": "Labyrinthos",
+      "coords": "10, 22",
+      "aetheryte": "Sharlayan Hamlet",
+      "note": ""
+    },
+    {
+      "id": "rarefied-white-oak-log",
+      "item": "Rarefied White Oak Log",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "Shadowbringers",
+      "starts": [8],
+      "duration": 2,
+      "zone": "Kholusia",
+      "coords": "28, 33",
+      "aetheryte": "Stilltide",
+      "note": ""
+    },
+    {
+      "id": "white-oak-branch",
+      "item": "White Oak Branch",
+      "job": "BTN",
+      "type": "folklore",
+      "expansion": "Shadowbringers",
+      "starts": [10],
+      "duration": 2,
+      "zone": "Kholusia",
+      "coords": "11, 29",
+      "aetheryte": "Wright",
+      "note": "Folklore tome required"
+    },
+    {
+      "id": "rarefied-pixie-apple",
+      "item": "Rarefied Pixie Apple",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "Shadowbringers",
+      "starts": [10],
+      "duration": 2,
+      "zone": "Il Mheg",
+      "coords": "4, 23",
+      "aetheryte": "Lydha Lran",
+      "note": ""
+    },
+    {
+      "id": "apricot",
+      "item": "Apricot",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "A Realm Reborn",
+      "starts": [9],
+      "duration": 3,
+      "zone": "Middle La Noscea",
+      "coords": "19, 16",
+      "aetheryte": "Summerford Farms",
+      "note": ""
+    },
+    {
+      "id": "bamboo-stick",
+      "item": "Bamboo Stick",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "A Realm Reborn",
+      "starts": [7],
+      "duration": 3,
+      "zone": "Upper La Noscea",
+      "coords": "28, 25",
+      "aetheryte": "Camp Bronze Lake",
+      "note": ""
+    },
+    {
+      "id": "black-truffle",
+      "item": "Black Truffle",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "A Realm Reborn",
+      "starts": [13],
+      "duration": 3,
+      "zone": "Eastern Thanalan",
+      "coords": "12, 16",
+      "aetheryte": "Camp Drybone",
+      "note": ""
+    },
+    {
+      "id": "wind-cluster",
+      "item": "Wind Cluster",
+      "job": "BTN",
+      "type": "unspoiled",
+      "expansion": "A Realm Reborn",
+      "starts": [1],
+      "duration": 3,
+      "zone": "Mor Dhona",
+      "coords": "31, 14",
+      "aetheryte": "Revenant's Toll",
+      "note": ""
+    }
+  ]
+}
+</script>
+
+<script id="time-logic">
+/* TIME-LOGIC-BEGIN */
+(function (global) {
+  "use strict";
+
+  // One Eorzea bell lasts 175 real seconds, so Eorzea time runs 3600/175
+  // (about 20.571) times faster than real time. Eorzea clocks are locked to
+  // the Unix epoch: zero seconds after 1970-01-01 UTC was 00:00 ET.
+  var ET_PER_EARTH = 3600 / 175;            // ET ms elapsed per Earth ms
+  var ET_DAY_MS = 24 * 3600000;             // length of one Eorzea day in ET ms
+  var BELL_MS = 3600000;                    // one ET bell in ET ms
+
+  var EARTH_MS_PER_ET_BELL = 175000;   // 175 real seconds per ET bell
+  var EARTH_SEC_PER_ET_BELL = 175;     // ditto, in Earth seconds
+  var EARTH_SEC_PER_ET_DAY = 4200;     // 70 real minutes per ET day
+
+  function eorzeaMs(earthMs) {
+    return earthMs * ET_PER_EARTH;
+  }
+
+  function etDeltaToEarthMs(etDeltaMs) {
+    return etDeltaMs / ET_PER_EARTH;
+  }
+
+  function mod(n, m) {
+    return ((n % m) + m) % m;
+  }
+
+  // Current Eorzea clock for a real-world timestamp (ms).
+  // Computed with integer Earth-second arithmetic so bell boundaries are exact.
+  // Returns { bell: 0-23, minute: 0-59, second: 0-59, hill: fractional bells 0-24 }.
+  function eorzeaClock(earthMs) {
+    var earthSec = Math.floor(earthMs / 1000);
+    var secInDay = mod(earthSec, EARTH_SEC_PER_ET_DAY);   // Earth seconds into the ET day
+    var bell = Math.floor(secInDay / EARTH_SEC_PER_ET_BELL); // 0..23
+    var rem = secInDay % EARTH_SEC_PER_ET_BELL;             // 0..174 Earth seconds into this bell
+    var minute = Math.floor(rem * 60 / EARTH_SEC_PER_ET_BELL);         // 0..59
+    var rem2 = rem * 60 - minute * EARTH_SEC_PER_ET_BELL;
+    var second = Math.floor(rem2 * 60 / EARTH_SEC_PER_ET_BELL);        // 0..59
+    return { bell: bell, minute: minute, second: second, hill: secInDay / EARTH_SEC_PER_ET_DAY * 24 };
+  }
+
+  // Does the slot [hour, hour+1) intersect the window [start, start+duration)?
+  // Wrapping is not needed: FFXIV timed windows do not cross midnight.
+  function windowCoversHour(start, duration, hour) {
+    return start < hour + 1 && start + duration > hour;
+  }
+
+  // Any window belonging to a node (list of starts) covers the slot?
+  function anyWindowCoversHour(starts, duration, hour) {
+    for (var i = 0; i < starts.length; i++) {
+      if (windowCoversHour(starts[i], duration, hour)) return true;
+    }
+    return false;
+  }
+
+  // State of the node's windows at Eorzea "hill" (fractional bells, same day 0-24).
+  // Returns:
+  //   { open: true,  msUntilClose (Earth ms) }  if some window is currently open
+  //   { open: false, msUntilOpen  (Earth ms) }  otherwise (soonest next opening)
+  function windowState(hill, starts, duration) {
+    var t = hill * BELL_MS;               // ET ms since ET midnight
+    var best = null;                      // { open, etDelta } to soonest event
+    for (var i = 0; i < starts.length; i++) {
+      var startEt = starts[i] * BELL_MS;
+      var endEt = startEt + duration * BELL_MS;
+      var delta;
+      var isOpen = t >= startEt && t < endEt;
+      if (isOpen) {
+        delta = endEt - t;                // ET ms remaining until close
+      } else {
+        delta = t < startEt ? startEt - t : startEt + ET_DAY_MS - t;
+      }
+      if (best === null || (isOpen === true && best.open === false)) {
+        best = { open: isOpen, etDelta: delta };
+      } else if (isOpen === best.open && delta < best.etDelta) {
+        best = { open: isOpen, etDelta: delta };
+      }
+    }
+    return {
+      open: best.open,
+      msToEvent: etDeltaToEarthMs(best.etDelta)
+    };
+  }
+
+  // Human-friendly countdown string, e.g. "1h 02m 05s" / "12m 30s" / "45s".
+  function formatCountdown(earthMs) {
+    var total = Math.max(0, Math.ceil(earthMs / 1000));
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    if (h > 0) return h + "h " + pad(m) + "m " + pad(s) + "s";
+    if (m > 0) return m + "m " + pad(s) + "s";
+    return s + "s";
+  }
+
+  // Format an hour number as an Eorzea clock label: 9 -> "09:00".
+  function formatBell(hour) {
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    return pad(hour) + ":00";
+  }
+
+  var api = {
+    ET_PER_EARTH: ET_PER_EARTH,
+    ET_DAY_MS: ET_DAY_MS,
+    eorzeaMs: eorzeaMs,
+    eorzeaClock: eorzeaClock,
+    etDeltaToEarthMs: etDeltaToEarthMs,
+    windowCoversHour: windowCoversHour,
+    anyWindowCoversHour: anyWindowCoversHour,
+    windowState: windowState,
+    formatCountdown: formatCountdown,
+    formatBell: formatBell
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  global.FFXIVTimeLogic = api;
+}(typeof window !== "undefined" ? window : globalThis));
+/* TIME-LOGIC-END */
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  var T = window.FFXIVTimeLogic;
+
+  var LS = {
+    get: function (key, fallback) {
+      try {
+        var raw = localStorage.getItem(key);
+        return raw === null ? fallback : JSON.parse(raw);
+      } catch (e) { return fallback; }
+    },
+    set: function (key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode etc. */ }
+    }
+  };
+
+  var state = {
+    nodes: [],
+    dataLabel: "embedded data",
+    slot: LS.get("fgrp.slot", null),          // 0-23 or null
+    route: LS.get("fgrp.route", []),          // ordered node ids
+    favorites: LS.get("fgrp.favorites", [])   // [{ name, slot, ids }]
+  };
+
+  var els = {
+    etClock: document.getElementById("et-clock"),
+    earthClock: document.getElementById("earth-clock"),
+    dataBadge: document.getElementById("data-source-badge"),
+    slotGrid: document.getElementById("slot-grid"),
+    slotHeading: document.getElementById("slot-heading-hour"),
+    nodeList: document.getElementById("node-list"),
+    routeList: document.getElementById("route-list"),
+    nextSummary: document.getElementById("next-summary"),
+    favList: document.getElementById("fav-list"),
+    favName: document.getElementById("fav-name")
+  };
+
+  function byId(id) {
+    for (var i = 0; i < state.nodes.length; i++) {
+      if (state.nodes[i].id === id) return state.nodes[i];
+    }
+    return null;
+  }
+
+  function slotsFor(node) {
+    return node.starts || [node.start];
+  }
+
+  function nodesAtSlot(hour) {
+    return state.nodes.filter(function (n) {
+      return T.anyWindowCoversHour(slotsFor(n), n.duration, hour);
+    });
+  }
+
+  function loadData() {
+    var embedded;
+    try {
+      embedded = JSON.parse(document.getElementById("default-nodes").textContent);
+    } catch (e) {
+      embedded = { nodes: [] };
+    }
+    state.nodes = embedded.nodes;
+    state.dataLabel = "embedded data";
+
+    // When served over HTTP, an editable nodes.json file sitting next to
+    // index.html overrides the embedded copy. On file:// the browser blocks
+    // fetch calls, so the embedded copy is used instead.
+    if (location.protocol === "http:" || location.protocol === "https:") {
+      return fetch("nodes.json")
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data && Array.isArray(data.nodes)) {
+            state.nodes = data.nodes;
+            state.dataLabel = "nodes.json";
+          }
+          boot();
+        })
+        .catch(function () { boot(); });
+    }
+    boot();
+  }
+
+  function boot() {
+    if (state.slot === null || typeof state.slot !== "number") {
+      state.slot = T.eorzeaClock(Date.now()).bell;
+      // If nothing is up this bell, start on the next hour that has stops.
+      for (var i = 1; i < 24 && nodesAtSlot(state.slot).length === 0; i++) {
+        state.slot = (state.slot + 1) % 24;
+      }
+    }
+    els.dataBadge.textContent = "Data: " + state.dataLabel;
+    buildSlotGrid();
+    renderAll();
+    setInterval(tick, 250);
+  }
+
+  function tick() {
+    var earth = Date.now();
+    var et = T.eorzeaClock(earth);
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    els.etClock.textContent = pad(et.bell) + ":" + pad(et.minute) + ":" + pad(et.second);
+    var d = new Date(earth);
+    els.earthClock.textContent = "· Earth " + d.toUTCString().slice(17, 25) + " UTC";
+    renderCountdowns();
+    markOpenNow();
+  }
+
+  function markOpenNow() {
+    var et = T.eorzeaClock(Date.now());
+    var pills = document.querySelectorAll("[data-open-pill]");
+    for (var i = 0; i < pills.length; i++) {
+      var el = pills[i];
+      var node = byId(el.getAttribute("data-node-id"));
+      if (!node) continue;
+      var st = T.windowState(et.hill, slotsFor(node), node.duration);
+      if (st.open) {
+        el.classList.add("open-now");
+        el.textContent = "open now · " + T.formatCountdown(st.msToEvent) + " left";
+      } else {
+        el.classList.remove("open-now");
+        el.textContent = "";
+      }
+    }
+  }
+
+  function buildSlotGrid() {
+    els.slotGrid.innerHTML = "";
+    var counts = {};
+    for (var h = 0; h < 24; h++) {
+      counts[h] = nodesAtSlot(h).length;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "slot-btn" + (h === state.slot ? " active" : "");
+      if (h === T.eorzeaClock(Date.now()).bell) b.classList.add("now");
+      b.setAttribute("aria-pressed", h === state.slot ? "true" : "false");
+      b.setAttribute("aria-label", "Slot " + T.formatBell(h) + " ET, " + counts[h] + " nodes up");
+      b.innerHTML = "<span class='hh'>" + T.formatBell(h) + "</span><span class='ct'>" + counts[h] + " up</span>";
+      b.dataset.hour = h;
+      b.addEventListener("click", function () {
+        state.slot = Number(this.dataset.hour);
+        LS.set("fgrp.slot", state.slot);
+        renderAll();
+      });
+      els.slotGrid.appendChild(b);
+    }
+  }
+
+  function windowLabel(node) {
+    var starts = slotsFor(node);
+    var parts = starts.map(function (s) {
+      return T.formatBell(s) + "–" + T.formatBell((s + node.duration) % 24);
+    });
+    return parts.join(" and ") + " ET";
+  }
+
+  function travelText(node) {
+    var bits = ["Aetheryte: " + node.aetheryte, "walk to (" + node.coords + ")"];
+    if (node.note) bits.push("· " + node.note);
+    return bits.join(" → ");
+  }
+
+  function inRoute(id) {
+    return state.route.indexOf(id) !== -1;
+  }
+
+  function toggleRoute(id) {
+    var i = state.route.indexOf(id);
+    if (i === -1) state.route.push(id);
+    else state.route.splice(i, 1);
+    LS.set("fgrp.route", state.route);
+    renderRoute();
+    renderNodeList();
+  }
+
+  function moveRoute(id, dir) {
+    var i = state.route.indexOf(id);
+    var j = i + dir;
+    if (i === -1 || j < 0 || j >= state.route.length) return;
+    var tmp = state.route[i];
+    state.route[i] = state.route[j];
+    state.route[j] = tmp;
+    LS.set("fgrp.route", state.route);
+    renderRoute();
+  }
+
+  function renderNodeList() {
+    var et = T.eorzeaClock(Date.now());
+    var nodes = nodesAtSlot(state.slot).slice().sort(function (a, b) {
+      return Math.min.apply(null, slotsFor(a)) - Math.min.apply(null, slotsFor(b));
+    });
+
+    els.slotHeading.textContent = T.formatBell(state.slot);
+
+    els.nodeList.innerHTML = "";
+    if (nodes.length === 0) {
+      els.nodeList.innerHTML = "<div class='empty'>Nothing is up in this Eorzean hour. Try another slot — nodes pop most of the day.</div>";
+      return;
+    }
+    nodes.forEach(function (node) {
+      var st = T.windowState(et.hill, slotsFor(node), node.duration);
+      var card = document.createElement("div");
+      card.className = "node-card";
+      var chips =
+        "<span class='pill job'>" + node.job + "</span>" +
+        "<span class='pill'>" + node.type + "</span>" +
+        "<span class='pill'>" + node.expansion + "</span>" +
+        "<span class='pill' data-open-pill data-node-id='" + node.id + "'>" +
+        (st.open ? "" : "opens in " + T.formatCountdown(st.msToEvent)) + "</span>";
+      card.innerHTML =
+        "<div class='node-top'><span class='node-name'>" + node.item + "</span>" + chips + "</div>" +
+        "<div class='node-meta'>" + windowLabel(node) + " · " + node.zone + " (" + node.coords + ")</div>" +
+        "<div class='node-meta'>" + travelText(node) + "</div>" +
+        (node.note ? "<div class='node-note'>" + node.note + "</div>" : "");
+      var actions = document.createElement("div");
+      actions.className = "node-actions";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "add-btn" + (inRoute(node.id) ? " in-route" : "");
+      btn.textContent = inRoute(node.id) ? "✓ In route — remove" : "+ Add to route";
+      btn.setAttribute("aria-pressed", inRoute(node.id) ? "true" : "false");
+      btn.addEventListener("click", function () { toggleRoute(node.id); });
+      actions.appendChild(btn);
+      card.appendChild(actions);
+      els.nodeList.appendChild(card);
+    });
+  }
+
+  function renderRoute() {
+    els.routeList.innerHTML = "";
+    if (state.route.length === 0) {
+      els.routeList.innerHTML = "<div class='empty'>No stops yet. Add nodes from the list on the left, then shuffle them into an order that suits your route.</div>";
+    }
+    state.route.forEach(function (id, idx) {
+      var node = byId(id);
+      if (!node) return;
+      var row = document.createElement("div");
+      row.className = "route-item";
+      var num = document.createElement("span");
+      num.className = "route-num";
+      num.textContent = (idx + 1) + ".";
+      var name = document.createElement("span");
+      name.className = "route-name";
+      name.textContent = node.item;
+      var travel = document.createElement("span");
+      travel.className = "route-travel";
+      travel.textContent = travelText(node);
+      var cd = document.createElement("span");
+      cd.className = "route-cd";
+      cd.setAttribute("data-route-cd", "");
+      cd.setAttribute("data-node-id", node.id);
+      row.appendChild(num); row.appendChild(name); row.appendChild(travel); row.appendChild(cd);
+      var controls = document.createElement("span");
+      var up = document.createElement("button");
+      up.type = "button"; up.className = "icon-btn"; up.textContent = "↑";
+      up.setAttribute("aria-label", "Move " + node.item + " up");
+      up.disabled = idx === 0;
+      up.addEventListener("click", function () { moveRoute(node.id, -1); });
+      var down = document.createElement("button");
+      down.type = "button"; down.className = "icon-btn"; down.textContent = "↓";
+      down.setAttribute("aria-label", "Move " + node.item + " down");
+      down.disabled = idx === state.route.length - 1;
+      down.addEventListener("click", function () { moveRoute(node.id, 1); });
+      var rm = document.createElement("button");
+      rm.type = "button"; rm.className = "icon-btn"; rm.textContent = "✕";
+      rm.setAttribute("aria-label", "Remove " + node.item + " from route");
+      rm.addEventListener("click", function () { toggleRoute(node.id); });
+      controls.appendChild(up); controls.appendChild(down); controls.appendChild(rm);
+      row.appendChild(controls);
+      els.routeList.appendChild(row);
+    });
+    renderCountdowns();
+  }
+
+  function renderCountdowns() {
+    var et = T.eorzeaClock(Date.now());
+    var soonest = null;
+    document.querySelectorAll("[data-route-cd]").forEach(function (el) {
+      var node = byId(el.getAttribute("data-node-id"));
+      if (!node) return;
+      var st = T.windowState(et.hill, slotsFor(node), node.duration);
+      if (st.open) {
+        el.classList.add("live");
+        el.textContent = "Open — closes in " + T.formatCountdown(st.msToEvent);
+      } else {
+        el.classList.remove("live");
+        el.textContent = "Opens in " + T.formatCountdown(st.msToEvent);
+      }
+      if (soonest === null || st.msToEvent < soonest) soonest = st.msToEvent;
+    });
+    if (state.route.length === 0) {
+      els.nextSummary.textContent = "";
+    } else if (soonest === null) {
+      els.nextSummary.textContent = "";
+    } else {
+      els.nextSummary.innerHTML = "Next window across your route opens in <strong>" +
+        T.formatCountdown(soonest) + "</strong>.";
+    }
+  }
+
+  function saveFavorite() {
+    var name = (els.favName.value || "").trim();
+    if (!name) { els.favName.focus(); return; }
+    state.favorites = state.favorites.filter(function (f) { return f.name !== name; });
+    state.favorites.unshift({ name: name, slot: state.slot, ids: state.route.slice() });
+    LS.set("fgrp.favorites", state.favorites);
+    els.favName.value = "";
+    renderFavorites();
+  }
+
+  function renderFavorites() {
+    els.favList.innerHTML = "";
+    if (state.favorites.length === 0) {
+      els.favList.innerHTML = "<div class='empty'>No favorites saved yet. Fill a route in, name it, and hit Save — it will be waiting next visit.</div>";
+      return;
+    }
+    state.favorites.forEach(function (fav, idx) {
+      var row = document.createElement("div");
+      row.className = "fav-item";
+      var load = document.createElement("button");
+      load.type = "button";
+      load.className = "load-btn";
+      load.textContent = fav.name;
+      load.setAttribute("aria-label", "Load favorite route " + fav.name);
+      load.addEventListener("click", function () {
+        state.route = fav.ids.slice();
+        LS.set("fgrp.route", state.route);
+        state.slot = fav.slot !== null ? fav.slot : state.slot;
+        LS.set("fgrp.slot", state.slot);
+        renderAll();
+      });
+      var meta = document.createElement("span");
+      meta.className = "meta";
+      meta.textContent = "· " + fav.ids.length + " stops · slot " + T.formatBell(fav.slot);
+      var del = document.createElement("button");
+      del.type = "button";
+      del.className = "icon-btn";
+      del.textContent = "✕";
+      del.setAttribute("aria-label", "Delete favorite route " + fav.name);
+      del.addEventListener("click", function () {
+        state.favorites.splice(idx, 1);
+        LS.set("fgrp.favorites", state.favorites);
+        renderFavorites();
+      });
+      row.appendChild(load); row.appendChild(meta); row.appendChild(del);
+      els.favList.appendChild(row);
+    });
+  }
+
+  function copyRoute() {
+    var lines = ["FFXIV gathering route — slot " + T.formatBell(state.slot) + " ET:", ""];
+    state.route.forEach(function (id, idx) {
+      var node = byId(id);
+      if (!node) return;
+      lines.push((idx + 1) + ". " + node.item + " — " + node.zone +
+        " (" + node.coords + ") — " + travelText(node) + " — " + windowLabel(node));
+    });
+    var text = lines.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  }
+
+  function renderAll() {
+    buildSlotGrid();
+    renderNodeList();
+    renderRoute();
+    renderFavorites();
+    renderCountdowns();
+    markOpenNow();
+  }
+
+  document.getElementById("now-btn").addEventListener("click", function () {
+    state.slot = T.eorzeaClock(Date.now()).bell;
+    LS.set("fgrp.slot", state.slot);
+    renderAll();
+  });
+  document.getElementById("clear-route-btn").addEventListener("click", function () {
+    state.route = [];
+    LS.set("fgrp.route", state.route);
+    renderNodeList();
+    renderRoute();
+  });
+  document.getElementById("copy-route-btn").addEventListener("click", copyRoute);
+  document.getElementById("save-fav-btn").addEventListener("click", saveFavorite);
+  els.favName.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") saveFavorite();
+  });
+
+  loadData();
+})();
+</script>
+</body>
+</html>
